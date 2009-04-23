@@ -147,7 +147,7 @@ module RubySesame
     #    be used to bind variables outside the actual query. Keys are
     #    variable names and values are N-Triples encoded RDF values.
     def query(query, options={})
-      logger.debug("Ruby-Sesame querying:\n#{ query }\n\nOptions: #{ options.pretty_inspect }")
+      logger.debug("Ruby-Sesame querying:\n#{ query }\n\nOptions: #{ options.inspect }")
 
       options = {
         :result_type => DATA_TYPES[:JSON],
@@ -361,7 +361,17 @@ module RubySesame
       raise(SesameException.new(easy.body_str)) unless easy.response_code == 204
     end # add
 
+    def update(data, data_format=DATA_TYPES[:N3])
+       uri = URI.parse(self.uri + "/statements")
+       header = {'Content-Type' => data_format}
+       http = Net::HTTP.start(uri.host, uri.port)
+       result = http.send_request('PUT', uri.path, data, header)
 
+       raise(SesameException.new(result.code)) unless result.code == '204'
+
+       result.body
+    end
+    
     # Returns the number of statements in the repository.
     def size
       easy = Curl::Easy.new
