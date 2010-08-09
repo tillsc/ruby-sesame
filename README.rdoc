@@ -1,14 +1,16 @@
-== ruby-sesame
+= RubySesame
+
 A  Ruby library to interact with OpenRDF.org's Sesame RDF framework via its REST interface.
 
-* My email: pjlegato at gmail dot com
-* Git repository: http://github.com/pjlegato/ruby-sesame/
-* Rubyforge homepage: http://rubyforge.org/projects/ruby-sesame/
+This is a fork of Paul Legato's ruby-sesame: http://github.com/pjlegato/ruby-sesame/
+
+This version has no curb dependency and uses Net::HTTP instead. So this fork is
+JRuby ready.
 
 == Authors
 
-Paul Legato (pjlegato at gmail dot com)
-
+* Paul Legato (pjlegato at gmail dot com)
+* Till Schulte-Coerne (till.schulte-coerne at innoq dot com)
 
 == LICENSE:
 

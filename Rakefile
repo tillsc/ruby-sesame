@@ -44,10 +44,10 @@ task :release => :package do
 end
 
 Rake::RDocTask.new do |rdoc|
-  files =['README', 'LICENSE', 'lib/**/*.rb', 'app/**/*.rb']
+  files =['README.rdoc', 'COPYING', 'lib/**/*.rb']
   rdoc.rdoc_files.add(files)
-  rdoc.main = "README" # page to start on
-  rdoc.title = "UeCommon Docs"
+  rdoc.main = "README.rdoc" # page to start on
+  rdoc.title = "RubySesame Docs"
   rdoc.rdoc_dir = 'doc' # rdoc output folder
   rdoc.options << '--line-numbers'
 end
