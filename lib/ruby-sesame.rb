@@ -18,16 +18,14 @@
 # You should have received a copy of the GNU General Public License
 # along with Ruby-Sesame.  If not, see <http://www.gnu.org/licenses/>.
 
-require 'curb'
 require 'json'
-
-# Curb is faster, but doesn't do DELETE or PUT
 require 'net/http'
 require 'uri'
+require 'cgi'
+
+require 'active_support'
 
 module RubySesame
-
-  Version = "0.1.0"
 
   ## MIME types for result format to be sent by server.
   DATA_TYPES = {
@@ -87,7 +85,8 @@ module RubySesame
     end # initialize
 
     def query_version
-      @protocol_version = Curl::Easy.http_get(@url + "protocol").body_str.to_i
+      uri = URI.parse(@url + "protocol")
+      @protocol_version = Net::HTTP.get(uri.host, uri.path, uri.port).to_i
     end
 
     def protocol_version
@@ -104,11 +103,11 @@ module RubySesame
     end
 
     def query_repositories
-      easy = Curl::Easy.new
-      easy.headers["Accept"] = DATA_TYPES[:JSON]
-      easy.url = @url + "repositories"
-      easy.http_get
-      @repositories = JSON.parse(easy.body_str)["results"]["bindings"].map{|x| Repository.new(self, x) }
+      uri = URI.parse(@url + "repositories")
+      http = Net::HTTP.start(uri.host, uri.port)
+      response = http.get(uri.path, "Accept" => DATA_TYPES[:JSON])
+
+      @repositories = JSON.parse(response.body)["results"]["bindings"].map{|x| Repository.new(self, x) }
     end
 
   end # class Server
@@ -147,53 +146,44 @@ module RubySesame
     #    be used to bind variables outside the actual query. Keys are
     #    variable names and values are N-Triples encoded RDF values.
     def query(query, options={})
-      logger.debug("Ruby-Sesame querying:\n#{ query }\n\nOptions: #{ options.pretty_inspect }")
+      logger.debug("Ruby-Sesame querying:\n#{ query }\n\nOptions: #{ options.inspect }")
 
       options = {
         :result_type => DATA_TYPES[:JSON],
         :method => :get,
         :query_language => "sparql",
-      }.merge(options)
+      }.merge(options.symbolize_keys)
 
-      easy = Curl::Easy.new
-      easy.headers["Accept"] = options[:result_type]
+      fields = {"query" => query,
+        "queryLn" => (options[:query_language])
+      }
+
+      fields["infer"] = "false" unless options[:infer]
+
+      options[:variable_bindings].keys.map { |name|
+        fields["$<#{name}>]"] = options[:variable_bindings][name]
+      } if options[:variable_bindings]
 
       if options[:method] == :get
-        easy.url = (self.uri + "?" +
-                    "query=#{ easy.escape(query) }&"+
-                    "queryLn=#{ easy.escape(options[:query_language]) }&" +
-                    (!options[:infer] ? "infer=false&" : "" ) +
-                    if options[:variable_bindings]
-                      options[:variable_bindings].keys.map {|name|
-                        "$<#{ easy.escape(name) }>=#{ easy.escape(options[:variable_bindings][name]) }"
-                      }.join("&")
-                    else
-                      ""
-                    end
-                    ).chop
+        uri = URI.parse(self.uri + "?" + fields.to_query)
 
-
-        easy.http_get
+        http = Net::HTTP.start(uri.host, uri.port)
+        response = http.get(uri.path + "?" + uri.query, "Accept" => options[:result_type])
 
       else # POST.
-        easy.url = self.uri
+        uri = URI.parse(self.uri)
 
-        fields = ["query=#{ easy.escape(query) }",
-                  "queryLn=#{ easy.escape(options[:query_language]) }"
-                 ]
+        req = Net::HTTP::Post.new(uri.path)
+        req["Accept"] = options[:result_type]
+        req.form_data = fields
 
-        fields.push("infer=false") unless options[:infer]
-
-        options[:variable_bindings].keys.map {|name|
-          field.push("$<#{ easy.escape(name) }>=#{ easy.escape(options[:variable_bindings][name]) }")
-        } if options[:variable_bindings]
-
-        easy.http_post(fields)
+        http = Net::HTTP.new(uri.host, uri.port).start
+        response = http.request(req)
       end
 
-      raise(SesameException.new(easy.body_str)) unless easy.response_code == 200
+      raise(SesameException.new(response.body)) unless response.code == "200"
 
-      easy.body_str
+      response.body
     end # query
 
     #
@@ -224,19 +214,17 @@ module RubySesame
     #       statements are included by default.
     #
     def get_statements(options={})
-      options = {:result_type => DATA_TYPES[:Turtle]}.merge(options)
-      easy = Curl::Easy.new
-      easy.headers["Accept"] = options[:result_type]
+      options = {:result_type => DATA_TYPES[:Turtle]}.merge(options.symbolize_keys)
+ 
+      uri = URI.parse(self.uri + "/statements?" + options.reject{|k,v|
+            ![:subj, :pred, :obj, :context, :infer].include?(k)
+          }.to_query)
+      http = Net::HTTP.start(uri.host, uri.port)
+      response = http.get(uri.path, "Accept" => options[:result_type])
 
-      url = self.uri + "/statements?" + self.class.get_parameterize(options.reject{|k,v|
-                                                                      ![:subj, :pred, :obj, :context, :infer].include?(k)
-                                                                    })
-      easy.url = url
-      easy.http_get
+      raise(SesameException.new(response.body)) unless response.code == "200"
 
-      raise(SesameException.new(easy.body_str)) unless easy.response_code == 200
-
-      easy.body_str
+      response.body
     end # get_statements
 
     # Delete one or more statements from the repository. Takes the same arguments as get_statements.
@@ -245,6 +233,7 @@ module RubySesame
     # This is ordinarily not allowed. Set safety=false to delete all statements.
     #
     def delete_statements!(options={}, safety=true)
+      options.symbolize_keys!
 
       unless !safety || options.keys.select {|x| [:subj, :pred, :obj].include?(x) }.size > 0
         raise Exception.new("You asked to delete all statements in the repository. Either give a subj/pred/obj qualifier, or set safety=false")
@@ -252,12 +241,12 @@ module RubySesame
 
       # We have to use net/http, because curb has not yet implemented DELETE as of this writing.
 
-      uri = URI.parse(self.uri + "/statements?" + self.class.get_parameterize(options.reject{|k,v|
-                                                                                ![:subj, :pred, :obj, :context, :infer].include?(k)
-                                                                              }))
+      uri = URI.parse(self.uri + "/statements?" + options.reject{|k,v|
+            ![:subj, :pred, :obj, :context, :infer].include?(k)
+          }.to_query)
       http = Net::HTTP.start(uri.host, uri.port)
-      http.delete(uri.path)
-      raise(SesameException.new(easy.body_str)) unless easy.response_code == 204
+      response = http.delete(uri.path)
+      raise(SesameException.new("Response code: #{response.code} (#{response.message})\nBody: #{response.body}")) unless response.code == "204"
     end # delete_statements!
 
     # Convenience method; deletes all data from the repository.
@@ -268,15 +257,13 @@ module RubySesame
     # Returns the contexts available in the repository, unprocessed.
     # Results are in JSON by default, though XML and binary are also available.
     def raw_contexts(result_format="application/sparql-results+json")
-      easy = Curl::Easy.new
-      easy.headers["Accept"] = result_format
+      uri = URI.parse(self.uri + "/contexts")
+      http = Net::HTTP.start(uri.host, uri.port)
+      response = http.get(uri.path, "Accept" => result_format)
 
-      easy.url = self.uri + "/contexts"
-      easy.http_get
+      raise(SesameException.new(response.body)) unless response.code == "200"
 
-      raise(SesameException.new(easy.body_str)) unless easy.response_code == 200
-
-      easy.body_str
+      response.body
     end
 
     # Returns an Array of Strings, where each is the id of a context available on the server.
@@ -287,15 +274,13 @@ module RubySesame
     # Return the namespaces available in the repository, raw and unprocessed.
     # Results are in JSON by default, though XML and binary are also available.
     def raw_namespaces(result_format="application/sparql-results+json")
-      easy = Curl::Easy.new
-      easy.headers["Accept"] = result_format
+      uri = URI.parse(self.uri + "/namespaces")
+      http = Net::HTTP.start(uri.host, uri.port)
+      response = http.get(uri.path, "Accept" => result_format)
 
-      easy.url = self.uri + "/namespaces"
-      easy.http_get
+      raise(SesameException.new(response.body)) unless response.code == "200"
 
-      raise(SesameException.new(easy.body_str)) unless easy.response_code == 200
-
-      easy.body_str
+      response.body
     end
 
     # Returns a Hash. Keys are the prefixes, and the values are the corresponding namespaces.
@@ -311,13 +296,15 @@ module RubySesame
     # Gets the namespace for the given prefix.
     # Returns nil if not found.
     def namespace(prefix)
-      easy = Curl::Easy.new
-      easy.url = self.uri + "/namespaces/" + easy.escape(prefix)
-      easy.http_get
+      uri = URI.parse(self.uri + "/namespaces/" + CGI.escape(prefix))
+      http = Net::HTTP.start(uri.host, uri.port)
+      response = http.get(uri.path)
 
-      raise(SesameException.new(easy.body_str)) unless easy.response_code == 200
+      return nil if response.code == "404"
 
-      ns = easy.body_str
+      raise(SesameException.new(response.body)) unless response.code == "200"
+
+      ns = response.body
       ns =~ /^Undefined prefix:/ ? nil : ns
     end
 
@@ -325,27 +312,27 @@ module RubySesame
     def namespace!(prefix, namespace)
       uri = URI.parse(self.uri + "/namespaces/" + URI.escape(prefix))
       http = Net::HTTP.start(uri.host, uri.port)
-      result = http.send_request('PUT', uri.path, namespace)
+      response = http.send_request('PUT', uri.path, namespace)
 
-      raise(SesameException.new(easy.body_str)) unless easy.response_code == 204
+      raise(SesameException.new(response.body)) unless response.code == "204"
 
-      result.body
+      response.body
     end
 
     # Deletes the namespace with the given prefix.
     def delete_namespace!(prefix)
       uri = URI.parse(self.uri + "/namespaces/" + URI.escape(prefix))
       http = Net::HTTP.start(uri.host, uri.port)
-      http.delete(uri.path)
-      raise(SesameException.new(easy.body_str)) unless easy.response_code == 204
+      response = http.delete(uri.path)
+      raise(SesameException.new(response.body)) unless response.code == "204"
     end
 
     # Deletes all namespaces in the repository.
     def delete_all_namespaces!
       uri = URI.parse(self.uri + "/namespaces")
       http = Net::HTTP.start(uri.host, uri.port)
-      http.delete(uri.path)
-      raise(SesameException.new(easy.body_str)) unless easy.response_code == 204
+      response = http.delete(uri.path)
+      raise(SesameException.new(response.body)) unless response.code == "204"
     end
 
 
@@ -353,38 +340,28 @@ module RubySesame
     # "special purpose transaction document". I don't know what the
     # latter is.
     def add!(data, data_format=DATA_TYPES[:Turtle])
-      easy = Curl::Easy.new
-      easy.headers["Content-Type"] = data_format
+      uri = URI.parse(self.uri + "/statements")
 
-      easy.url = self.uri + "/statements"
-      easy.http_post(data)
-      raise(SesameException.new(easy.body_str)) unless easy.response_code == 204
+      req = Net::HTTP::Post.new(uri.path)
+      req["Content-Type"] = data_format
+      req.body = data
+
+      http = Net::HTTP.new(uri.host, uri.port).start
+      response = http.request(req)
+
+      raise(SesameException.new(response.body)) unless response.code == "204"
     end # add
 
 
     # Returns the number of statements in the repository.
     def size
-      easy = Curl::Easy.new
-      easy.url = self.uri + "/size"
-      easy.http_get
+      uri = URI.parse(self.uri + "/size")
+      http = Net::HTTP.start(uri.host, uri.port)
+      response = http.get(uri.path)
 
-      raise(SesameException.new(easy.body_str)) unless easy.response_code == 200
+      raise(SesameException.new(response.body)) unless response.code == "200"
 
-      easy.body_str.to_i
-    end
-
-
-    # Convert the given hash into an array of strings for a POST.
-    def self.post_parameterize(hash)
-      easy = Curl::Easy.new
-      hash.keys.map{|key|
-        easy.escape(key.to_s) + "=" + easy.escape(hash[key])
-      }
-    end
-
-    # Convert the given hash into a URL paramter string for a GET.
-    def self.get_parameterize(hash)
-     post_parameterize(hash).join("&")
+      response.body.to_i
     end
 
   end # class Repository
