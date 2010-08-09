@@ -1,17 +1,56 @@
 require 'rubygems'
-require 'hoe'
-require 'lib/ruby-sesame'
 require 'spec/rake/spectask'
+require 'rubygems/specification'
+require 'rake/rdoctask'
+require 'rake'
 
-Hoe.new('ruby-sesame', RubySesame::Version) do |p|
-  p.rubyforge_name = 'ruby-sesame'
-  p.author = 'Paul Legato'
-  p.summary = 'A Ruby interface to OpenRDF.org\'s Sesame RDF triple store'
-  p.email = 'pjlegato at gmail dot com'
-  p.url = 'http://ruby-sesame.rubyforge.org'
-  p.remote_rdoc_dir = '' # Release to root
+def gemspec
+  @gemspec ||= begin
+    gem_name = File.basename(File.dirname(__FILE__))
+    file = File.expand_path("../#{gem_name}.gemspec", __FILE__)
+    eval(File.read(file), binding, file)
+  end
 end
 
+begin
+  require 'rake/gempackagetask'
+rescue LoadError
+  task(:gem) { $stderr.puts '`gem install rake` to package gems' }
+else
+  Rake::GemPackageTask.new(gemspec) do |pkg|
+    pkg.gem_spec = gemspec
+  end
+  task :gem => :gemspec
+end
+
+desc "Validates the gemspec"
+task :gemspec do
+  gemspec.validate
+end
+
+desc "Displays the current version"
+task :version do
+  puts "Current version: #{gemspec.version}"
+end
+
+desc "Installs the gem locally"
+task :install => :package do
+  sh "gem install pkg/#{gemspec.name}-#{gemspec.version}"
+end
+
+desc "Release the gem"
+task :release => :package do
+  sh "gem push pkg/#{gemspec.name}-#{gemspec.version}.gem"
+end
+
+Rake::RDocTask.new do |rdoc|
+  files =['README', 'LICENSE', 'lib/**/*.rb', 'app/**/*.rb']
+  rdoc.rdoc_files.add(files)
+  rdoc.main = "README" # page to start on
+  rdoc.title = "UeCommon Docs"
+  rdoc.rdoc_dir = 'doc' # rdoc output folder
+  rdoc.options << '--line-numbers'
+end
 
 desc "Run all specs"
 Spec::Rake::SpecTask.new do |t|

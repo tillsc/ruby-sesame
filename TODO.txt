@@ -1,3 +1,0 @@
-* Add response code checks for all methods.
-* Add tests for all response code checks.
-
