@@ -31,7 +31,10 @@
 
 require File.join(File.dirname(__FILE__), *%w[spec_helper])
 
-require 'xml/libxml'
+begin
+  require 'xml/libxml' # Doesn't matter if not installed (test will check this)
+rescue LoadError => e
+end
 
 URL = "http://localhost:8080/openrdf-sesame"
 
@@ -127,7 +130,9 @@ describe "Live Ruby-Sesame tests (**** N.B. these will fail unless you have a pr
     lambda { result = @system.query(GRAPH_QUERY, :result_type => RubySesame::DATA_TYPES[:RDFXML]) }.should_not raise_error
 
     xml = nil
-    lambda { xml = XML::Parser.string(result).parse }.should_not raise_error
+    if Kernel.const_defined?(:XML)
+      lambda { xml = XML::Parser.string(result).parse }.should_not raise_error
+    end
   end
 
   it "should be able to get NTriples results for a graph query" do
