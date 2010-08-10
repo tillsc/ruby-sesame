@@ -86,7 +86,7 @@ module RubySesame
 
     def query_version
       uri = URI.parse(@url + "protocol")
-      @protocol_version = Net::HTTP.get(uri.host, uri.path, uri.port).to_i
+      @protocol_version = Net::HTTP.get(uri.host, uri.request_uri, uri.port).to_i
     end
 
     def protocol_version
@@ -105,7 +105,7 @@ module RubySesame
     def query_repositories
       uri = URI.parse(@url + "repositories")
       http = Net::HTTP.start(uri.host, uri.port)
-      response = http.get(uri.path, "Accept" => DATA_TYPES[:JSON])
+      response = http.get(uri.request_uri, "Accept" => DATA_TYPES[:JSON])
 
       @repositories = JSON.parse(response.body)["results"]["bindings"].map{|x| Repository.new(self, x) }
     end
@@ -168,12 +168,12 @@ module RubySesame
         uri = URI.parse(self.uri + "?" + fields.to_query)
 
         http = Net::HTTP.start(uri.host, uri.port)
-        response = http.get(uri.path + "?" + uri.query, "Accept" => options[:result_type])
+        response = http.get(uri.request_uri, "Accept" => options[:result_type])
 
       else # POST.
         uri = URI.parse(self.uri)
 
-        req = Net::HTTP::Post.new(uri.path)
+        req = Net::HTTP::Post.new(uri.request_uri)
         req["Accept"] = options[:result_type]
         req.form_data = fields
 
@@ -217,10 +217,10 @@ module RubySesame
       options = {:result_type => DATA_TYPES[:Turtle]}.merge(options.symbolize_keys)
  
       uri = URI.parse(self.uri + "/statements?" + options.reject{|k,v|
-            ![:subj, :pred, :obj, :context, :infer].include?(k)
-          }.to_query)
+          ![:subj, :pred, :obj, :context, :infer].include?(k)
+        }.to_query)
       http = Net::HTTP.start(uri.host, uri.port)
-      response = http.get(uri.path, "Accept" => options[:result_type])
+      response = http.get(uri.request_uri, "Accept" => options[:result_type])
 
       raise(SesameException.new(response.body)) unless response.code == "200"
 
@@ -243,9 +243,9 @@ module RubySesame
 
       uri = URI.parse(self.uri + "/statements?" + options.reject{|k,v|
             ![:subj, :pred, :obj, :context, :infer].include?(k)
-          }.to_query)
+        }.to_query)
       http = Net::HTTP.start(uri.host, uri.port)
-      response = http.delete(uri.path)
+      response = http.delete(uri.request_uri)
       raise(SesameException.new("Response code: #{response.code} (#{response.message})\nBody: #{response.body}")) unless response.code == "204"
     end # delete_statements!
 
@@ -259,7 +259,7 @@ module RubySesame
     def raw_contexts(result_format="application/sparql-results+json")
       uri = URI.parse(self.uri + "/contexts")
       http = Net::HTTP.start(uri.host, uri.port)
-      response = http.get(uri.path, "Accept" => result_format)
+      response = http.get(uri.request_uri, "Accept" => result_format)
 
       raise(SesameException.new(response.body)) unless response.code == "200"
 
@@ -276,7 +276,7 @@ module RubySesame
     def raw_namespaces(result_format="application/sparql-results+json")
       uri = URI.parse(self.uri + "/namespaces")
       http = Net::HTTP.start(uri.host, uri.port)
-      response = http.get(uri.path, "Accept" => result_format)
+      response = http.get(uri.request_uri, "Accept" => result_format)
 
       raise(SesameException.new(response.body)) unless response.code == "200"
 
@@ -298,7 +298,7 @@ module RubySesame
     def namespace(prefix)
       uri = URI.parse(self.uri + "/namespaces/" + CGI.escape(prefix))
       http = Net::HTTP.start(uri.host, uri.port)
-      response = http.get(uri.path)
+      response = http.get(uri.request_uri)
 
       return nil if response.code == "404"
 
@@ -312,7 +312,7 @@ module RubySesame
     def namespace!(prefix, namespace)
       uri = URI.parse(self.uri + "/namespaces/" + URI.escape(prefix))
       http = Net::HTTP.start(uri.host, uri.port)
-      response = http.send_request('PUT', uri.path, namespace)
+      response = http.send_request('PUT', uri.request_uri, namespace)
 
       raise(SesameException.new(response.body)) unless response.code == "204"
 
@@ -323,7 +323,7 @@ module RubySesame
     def delete_namespace!(prefix)
       uri = URI.parse(self.uri + "/namespaces/" + URI.escape(prefix))
       http = Net::HTTP.start(uri.host, uri.port)
-      response = http.delete(uri.path)
+      response = http.delete(uri.request_uri)
       raise(SesameException.new(response.body)) unless response.code == "204"
     end
 
@@ -331,7 +331,7 @@ module RubySesame
     def delete_all_namespaces!
       uri = URI.parse(self.uri + "/namespaces")
       http = Net::HTTP.start(uri.host, uri.port)
-      response = http.delete(uri.path)
+      response = http.delete(uri.request_uri)
       raise(SesameException.new(response.body)) unless response.code == "204"
     end
 
@@ -339,11 +339,12 @@ module RubySesame
     # Adds new data to the repository.  The data can be an RDF document or a
     # "special purpose transaction document". I don't know what the
     # latter is.
-    def add!(data, data_format=DATA_TYPES[:Turtle])
-      uri = URI.parse(self.uri + "/statements")
+    def add!(data, options = {})
+      options = {:data_format => DATA_TYPES[:Turtle]}.merge(options.symbolize_keys)
+      uri = URI.parse(self.uri + "/statements?" + options.reject{ |k,v| [:data_format].include?(k) }.to_query)
 
-      req = Net::HTTP::Post.new(uri.path)
-      req["Content-Type"] = data_format
+      req = Net::HTTP::Post.new(uri.request_uri)
+      req["Content-Type"] = options[:data_format]
       req.body = data
 
       http = Net::HTTP.new(uri.host, uri.port).start
@@ -357,7 +358,7 @@ module RubySesame
     def size
       uri = URI.parse(self.uri + "/size")
       http = Net::HTTP.start(uri.host, uri.port)
-      response = http.get(uri.path)
+      response = http.get(uri.request_uri)
 
       raise(SesameException.new(response.body)) unless response.code == "200"
 

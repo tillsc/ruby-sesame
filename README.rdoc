@@ -2,7 +2,7 @@
 
 A  Ruby library to interact with OpenRDF.org's Sesame RDF framework via its REST interface.
 
-This is a fork of Paul Legato's ruby-sesame: http://github.com/pjlegato/ruby-sesame/
+This is a fork of Paul Legato's ruby-sesame: http://github.com/pjlegato/ruby-sesame
 
 This version has no curb dependency and uses Net::HTTP instead. So this fork is
 JRuby ready.
