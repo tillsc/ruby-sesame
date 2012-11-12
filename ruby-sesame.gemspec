@@ -14,7 +14,6 @@ Gem::Specification.new do |s|
 
   s.add_dependency "activesupport"
   s.add_dependency "json"
-  s.add_dependency "net/http"
 
   s.files        = Dir.glob("{lib,spec}/**/*") + %w(COPYING README.txt ruby-sesame.gemspec)
   s.executables  = []
