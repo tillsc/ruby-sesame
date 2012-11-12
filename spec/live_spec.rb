@@ -67,7 +67,7 @@ describe "Live Ruby-Sesame tests (**** N.B. these will fail unless you have a pr
   end
 
   it "should be able to query the Sesame server's version number" do
-    @server.protocol_version.should == 4
+    @server.protocol_version.should == 6
   end
 
   it "should be able to get a list of repositories" do
@@ -81,7 +81,7 @@ describe "Live Ruby-Sesame tests (**** N.B. these will fail unless you have a pr
   it "should auto-query upon initialization if told to do so" do
     server = nil
     lambda { server = RubySesame::Server.new(URL, true) }.should_not raise_error
-    server.protocol_version.should == 4
+    server.protocol_version.should == 6
   end
 
   it "should be able to run a GET JSON tuple query on the System repository" do
