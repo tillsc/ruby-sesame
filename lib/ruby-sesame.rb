@@ -353,7 +353,17 @@ module RubySesame
       raise(SesameException.new(response.body)) unless response.code == "204"
     end # add
 
+    def update(data, data_format=DATA_TYPES[:N3])
+       uri = URI.parse(self.uri + "/statements")
+       header = {'Content-Type' => data_format}
+       http = Net::HTTP.start(uri.host, uri.port)
+       result = http.send_request('PUT', uri.path, data, header)
 
+       raise(SesameException.new(result.code)) unless result.code == '204'
+
+       result.body
+    end
+    
     # Returns the number of statements in the repository.
     def size
       uri = URI.parse(self.uri + "/size")
