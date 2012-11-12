@@ -18,7 +18,7 @@
 # You should have received a copy of the GNU General Public License
 # along with Ruby-Sesame.  If not, see <http://www.gnu.org/licenses/>.
 
-require File.join(File.dirname(__FILE__), *%w[spec_helper])
+require File.join(File.expand_path(File.dirname(__FILE__)), 'spec_helper')
 
 shared_examples_for "shared RubySesame specs" do
 
