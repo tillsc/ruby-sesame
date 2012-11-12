@@ -29,7 +29,7 @@
 # N.B. It will fail if that is not the case, through no fault of its own.
 #
 
-require File.join(File.dirname(__FILE__), *%w[spec_helper])
+require File.join(File.expand_path(File.dirname(__FILE__)), 'spec_helper')
 
 begin
   require 'xml/libxml' # Doesn't matter if not installed (test will check this)
