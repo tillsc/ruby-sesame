@@ -23,7 +23,7 @@ require 'net/http'
 require 'uri'
 require 'cgi'
 
-require 'active_support'
+require 'active_support/core_ext'
 
 module RubySesame
 
