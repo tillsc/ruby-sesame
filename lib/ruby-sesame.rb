@@ -49,6 +49,11 @@ module RubySesame
 
 
   class SesameException < Exception
+    attr :body
+
+    def initialize(body)
+      @body = body
+    end
   end
 
   class Server
