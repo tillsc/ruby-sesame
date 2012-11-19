@@ -220,7 +220,7 @@ module RubySesame
     #
     def get_statements(options={})
       options = {:result_type => DATA_TYPES[:Turtle]}.merge(options.symbolize_keys)
- 
+
       uri = URI.parse(self.uri + "/statements?" + options.reject{|k,v|
           ![:subj, :pred, :obj, :context, :infer].include?(k)
         }.to_query)
@@ -368,7 +368,7 @@ module RubySesame
 
        result.body
     end
-    
+
     # Returns the number of statements in the repository.
     def size
       uri = URI.parse(self.uri + "/size")
